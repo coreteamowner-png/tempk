@@ -13,11 +13,11 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-POETRY = [
-    "*Tumhara gham hi to hai jo hame zinda rakhta hai*\n— *Jaun Elia*",
-    "*Suna hai log use aankhon mein basate hain*\n— *Ahmad Faraz*",
-    "*Main bhi bohot ajeeb hoon, itna ajeeb hoon ke bas*\n— *Jaun Elia*",
-    "*Ranjish hi sahi dil hi dukhane ke liye aa*\n— *Ahmad Faraz*",
+URDU_SHAYARI = [
+    "تمہارا غم ہی تو ہے جو ہمیں زندہ رکھتا ہے — جون ایلیا",
+    "سنا ہے لوگ اُسے آنکھوں میں بساتے ہیں — احمد فراز",
+    "ہم بھی دریا ہیں ہمیں اپنا ہنر معلوم ہے — جون ایلیا",
+    "رنجش ہی سہی دل ہی دکھانے کے لیے آ — احمد فراز",
 ]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -25,16 +25,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "👑 *MuDaSiR VIP Temp Mail Bot* 👑\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
-        f"{random.choice(POETRY)}\n\n"
-        f"Welcome {user.mention_markdown_v2()} 🌹"
+        f"{random.choice(URDU_SHAYARI)}\n\n"
+        f"خوش آمدید {user.mention_markdown_v2()}"
     )
 
-    keyboard = [
-        [InlineKeyboardButton("✨ Create Temp Mail", callback_data="create")],
-        [InlineKeyboardButton("📥 Inbox", callback_data="inbox")],
-        [InlineKeyboardButton("🌐 Domains", callback_data="domains")],
-        [InlineKeyboardButton("🗑 Delete Email", callback_data="delete")],
-    ]
+    keyboard = [[InlineKeyboardButton("📧 نیا ای میل بنائیں", callback_data="create")]]
 
     await update.message.reply_text(
         text,
@@ -46,14 +41,16 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    # 🔹 GET DOMAINS
     if q.data == "domains":
         r = requests.get(f"{BASE_URL}/api/email/domains", headers=HEADERS)
         domains = r.json().get("domains", [])
-        msg = "🌐 *Available Domains*\n\n"
+        msg = "🌐 *دستیاب ڈومینز*\n\n"
         for d in domains:
             msg += f"• `{d}`\n"
         await q.edit_message_text(msg, parse_mode="Markdown")
 
+    # 🔹 CREATE EMAIL (USER‑WISE)
     elif q.data == "create":
         r = requests.get(f"{BASE_URL}/api/email/domains", headers=HEADERS)
         domain = r.json()["domains"][0]
@@ -67,42 +64,48 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         r = requests.post(f"{BASE_URL}/api/emails/generate", headers=HEADERS, json=payload)
         if r.status_code != 200:
-            await q.edit_message_text("❌ Email creation failed")
+            await q.edit_message_text("❌ ای میل بنانے میں مسئلہ آیا")
             return
 
         data = r.json()
+        context.user_data.clear()
         context.user_data['email_id'] = data['id']
         context.user_data['email'] = data['email']
 
+        keyboard = [
+            [InlineKeyboardButton("📥 ان باکس دیکھیں", callback_data="inbox")],
+            [InlineKeyboardButton("🌐 ڈومینز", callback_data="domains")]
+        ]
+
         await q.edit_message_text(
-            f"✅ *Email Created*\n\n📧 `{data['email']}`",
-            parse_mode="Markdown"
+            f"✅ *ای میل تیار ہے*\n\n📧 `{data['email']}`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
+    # 🔹 INBOX (FILTERED – USER ONLY)
     elif q.data == "inbox":
+        email_id = context.user_data.get('email_id')
+        email_addr = context.user_data.get('email')
+
+        if not email_id:
+            await q.edit_message_text("❌ پہلے ای میل بنائیں")
+            return
+
         r = requests.get(f"{BASE_URL}/api/emails", headers=HEADERS)
         emails = r.json().get("emails", [])
-        if not emails:
-            await q.edit_message_text("📭 Inbox empty")
-            return
 
-        msg = "📥 *Your Emails*\n\n"
+        msg = f"📥 *ان باکس* ({email_addr})\n\n"
+        found = False
         for e in emails:
-            msg += f"• `{e['address']}`\n"
+            if e['id'] == email_id:
+                found = True
+                msg += f"• موصول نہیں ہوئی ابھی\n"
+
+        if not found:
+            msg += "کوئی پیغام موجود نہیں"
+
         await q.edit_message_text(msg, parse_mode="Markdown")
-
-    elif q.data == "delete":
-        email_id = context.user_data.get('email_id')
-        if not email_id:
-            await q.edit_message_text("❌ No email to delete")
-            return
-
-        r = requests.delete(f"{BASE_URL}/api/emails/{email_id}", headers=HEADERS)
-        if r.status_code == 200:
-            context.user_data.clear()
-            await q.edit_message_text("🗑 Email deleted successfully")
-        else:
-            await q.edit_message_text("❌ Delete failed")
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
