@@ -48,17 +48,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= DOMAIN LIST =================
 async def show_domains(message, context):
-    res = requests.get(f"{BASE_URL}/domains")
-    domains = res.json().get("hydra:member", [])
-    if not domains:
+    # Fetch MULTIPLE pages to get more domains (Mail.tm paginated)
+    all_domains = []
+    for page in range(1, 4):  # first 3 pages = enough
+        res = requests.get(f"{BASE_URL}/domains?page={page}")
+        data = res.json().get("hydra:member", [])
+        if not data:
+            break
+        all_domains.extend(data)
+
+    if not all_domains:
         await message.reply_text("❌ No domains available right now")
         return
 
     buttons = []
-    for d in domains[:8]:
+    for d in all_domains[:12]:  # limit buttons
         buttons.append([InlineKeyboardButton(d["domain"], callback_data=f"dom:{d['domain']}")])
 
-    await message.reply_text("🌐 *Select a domain*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
+    await message.reply_text(
+        "🌐 *Select a domain (VIP)*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 # ================= CREATE ACCOUNT =================
 async def create_account(context, name=None, domain=None):
