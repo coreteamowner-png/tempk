@@ -12,72 +12,92 @@ from telegram.ext import (
     filters,
 )
 
+# ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BASE_URL = "https://api.mail.tm"
 
-# ================== UTILS ==================
+# ================= HELPERS =================
 
-def gen_password():
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+def gen_password(length: int = 12) -> str:
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-# ================== START ==================
+# ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "👑 *MuDaSiR VIP Temp Mail Bot* 👑\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "> **✨ Yo hi mausam ki ada dekh kar yaad aaya**\n"
-        "> **Faqat kaise badaltay hain log, jaan-e-jana 💔**\n>\n"
+        "> 🌙 **Yo hi mausam ki ada dekh kar yaad aaya**\n"
+        "> **Faqat kaise badaltay hain log, jaan-e-jana**\n>\n"
         "> **Tum bhi shayad isi mausam mein kahin kho gaye thay**\n"
         "> **Hum ne har simt tumhein dhoondha, magar paaya na gaya**\n>\n"
-        "> — *Ahmad Faraz* 🌙\n\n"
+        "> — *Ahmad Faraz* ✨\n\n"
         "🔐 Secure • Temporary • Private\n"
-        "📥 Real Inbox • Live Refresh\n"
-        "💎 Built for professionals"
+        "📥 Real Inbox • 🔄 Refresh Enabled"
     )
 
     keyboard = [
         [InlineKeyboardButton("✨ Create", callback_data="create"), InlineKeyboardButton("🌐 Domains", callback_data="domains")],
-        [InlineKeyboardButton("📥 Inbox", callback_data="inbox"), InlineKeyboardButton("✍️ Custom", callback_data="custom")]
-    ],
-        [InlineKeyboardButton("📥 Inbox", callback_data="inbox")],
-        [InlineKeyboardButton("✍️ Custom Email", callback_data="custom")],
+        [InlineKeyboardButton("📥 Inbox", callback_data="inbox"), InlineKeyboardButton("✍️ Custom", callback_data="custom")],
     ]
 
     await update.message.reply_text(
-        text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard)
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
-# ================== CREATE EMAIL ==================
-async def create_account(ctx, custom=None):
-    domains = requests.get(f"{BASE_URL}/domains").json()["hydra:member"]
-    domain = domains[0]["domain"]
-    name = custom or f"mudasir{random.randint(1000,9999)}"
-    email = f"{name}@{domain}"
+# ================= DOMAIN LIST =================
+async def show_domains(message, context):
+    res = requests.get(f"{BASE_URL}/domains")
+    domains = res.json().get("hydra:member", [])
+    if not domains:
+        await message.reply_text("❌ No domains available right now")
+        return
+
+    buttons = []
+    for d in domains[:8]:
+        buttons.append([InlineKeyboardButton(d["domain"], callback_data=f"dom:{d['domain']}")])
+
+    await message.reply_text("🌐 *Select a domain*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
+
+# ================= CREATE ACCOUNT =================
+async def create_account(context, name=None, domain=None):
+    # choose domain
+    if not domain:
+        res = requests.get(f"{BASE_URL}/domains")
+        domain = res.json()["hydra:member"][0]["domain"]
+
+    username = name or f"mudasir{random.randint(1000,9999)}"
+    email = f"{username}@{domain}"
     password = gen_password()
 
-    acc = requests.post(f"{BASE_URL}/accounts", json={"address": email, "password": password})
+    acc = requests.post(
+        f"{BASE_URL}/accounts",
+        json={"address": email, "password": password},
+    )
     if acc.status_code not in (200, 201):
         return None
 
-    token = requests.post(
-        f"{BASE_URL}/token", json={"address": email, "password": password}
-    ).json()["token"]
+    tok = requests.post(
+        f"{BASE_URL}/token",
+        json={"address": email, "password": password},
+    ).json().get("token")
 
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {tok}"}
     me = requests.get(f"{BASE_URL}/me", headers=headers).json()
 
     return {
         "email": email,
         "password": password,
-        "token": token,
-        "account_id": me["id"],
+        "token": tok,
+        "account_id": me.get("id"),
     }
 
-# ================== INBOX ==================
+# ================= INBOX =================
 async def show_inbox(message, context):
     token = context.user_data.get("token")
     if not token:
-        await message.reply_text("❌ Please create an email first.")
+        await message.reply_text("❌ Please create an email first")
         return
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -86,43 +106,46 @@ async def show_inbox(message, context):
 
     if not msgs:
         kb = [[InlineKeyboardButton("🔄 Refresh", callback_data="refresh")]]
-        await message.reply_text("📭 Inbox is empty.", reply_markup=InlineKeyboardMarkup(kb))
+        await message.reply_text("📭 Inbox is empty", reply_markup=InlineKeyboardMarkup(kb))
         return
 
     buttons = []
     for m in msgs:
-        label = f"📩 {m['subject'] or 'No Subject'}"
-        buttons.append([InlineKeyboardButton(label, callback_data=f"msg:{m['id']}")])
+        subject = m.get("subject") or "(No Subject)"
+        buttons.append([InlineKeyboardButton(f"📩 {subject}", callback_data=f"msg:{m['id']}")])
 
     buttons.append([InlineKeyboardButton("🔄 Refresh", callback_data="refresh")])
 
-    await message.reply_text(
-        "📥 *Inbox*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    await message.reply_text("📥 *Inbox*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
 
-# ================== READ MESSAGE ==================
+# ================= READ MESSAGE =================
 async def read_message(query, context, msg_id):
     token = context.user_data.get("token")
     headers = {"Authorization": f"Bearer {token}"}
     m = requests.get(f"{BASE_URL}/messages/{msg_id}", headers=headers).json()
 
+    sender = m.get("from", {}).get("address", "")
+    subject = m.get("subject", "")
+    body = m.get("text", "No content")
+
     text = (
-        f"*From:* **{m['from']['address']}**\n"
-        f"*Subject:* **{m['subject']}**\n\n"
-        f"> {m.get('text', 'No content')}"
+        f"*From:* **{sender}**\n"
+        f"*Subject:* **{subject}**\n\n"
+        f"> {body}"
     )
 
-    keyboard = [[InlineKeyboardButton("🔄 Refresh Inbox", callback_data="refresh")]]
+    kb = [[InlineKeyboardButton("🔄 Refresh Inbox", callback_data="refresh")]]
 
-    await query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
-# ================== MENU HANDLER ==================
+# ================= MENU HANDLER =================
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
     if q.data == "create":
-        data = await create_account(context)
+        domain = context.user_data.get("selected_domain")
+        data = await create_account(context, domain=domain)
         if not data:
             await q.message.reply_text("❌ Failed to create email")
             return
@@ -131,21 +154,30 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = [[InlineKeyboardButton("📥 Inbox", callback_data="inbox")]]
         await q.message.reply_text(f"✅ Email Created\n\n📧 `{data['email']}`", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
-    elif q.data == "custom":
-        context.user_data['await_custom'] = True
-        await q.message.reply_text("✍️ Send custom email name")
+    elif q.data == "domains":
+        await show_domains(q.message, context)
 
-    elif q.data == "inbox" or q.data == "refresh":
+    elif q.data.startswith("dom:"):
+        context.user_data["selected_domain"] = q.data.split(":", 1)[1]
+        await q.message.reply_text(f"✅ Domain selected: {context.user_data['selected_domain']}")
+
+    elif q.data == "custom":
+        context.user_data["await_custom"] = True
+        await q.message.reply_text("✍️ Send custom email name (only text)")
+
+    elif q.data in ("inbox", "refresh"):
         await show_inbox(q.message, context)
 
     elif q.data.startswith("msg:"):
-        await read_message(q, context, q.data.split(":")[1])
+        await read_message(q, context, q.data.split(":", 1)[1])
 
-# ================== TEXT ==================
+# ================= TEXT HANDLER =================
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get('await_custom'):
-        context.user_data['await_custom'] = False
-        data = await create_account(context, update.message.text.strip())
+    if context.user_data.get("await_custom"):
+        context.user_data["await_custom"] = False
+        name = update.message.text.strip()
+        domain = context.user_data.get("selected_domain")
+        data = await create_account(context, name=name, domain=domain)
         if not data:
             await update.message.reply_text("❌ Failed to create email")
             return
@@ -154,7 +186,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = [[InlineKeyboardButton("📥 Inbox", callback_data="inbox")]]
         await update.message.reply_text(f"✅ Email Created\n\n📧 `{data['email']}`", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
-# ================== RUN ==================
+# ================= RUN =================
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
