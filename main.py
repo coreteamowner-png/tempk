@@ -1,8 +1,18 @@
 ================= MuDaSiR VIP Mail.tm Telegram Bot =================
 
-FINAL VERSION – READS ALL EMAIL TYPES (TEXT / HTML / IMAGE / ATTACHMENT)
+COMPLETE FINAL VERSION
 
-Stable • Async-safe • Production-ready
+✔ Reads ALL emails correctly
+
+✔ Links stay ORIGINAL & clickable
+
+✔ Email length controlled (not too long)
+
+✔ Text / HTML / Attachments supported
+
+✔ No Markdown bugs
+
+✔ Stable on Render
 
 import os import random import string import asyncio import re from html import unescape import requests
 
@@ -10,41 +20,41 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup from tel
 
 ================= CONFIG =================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN") BASE_URL = "https://api.mail.tm"
+BOT_TOKEN = os.getenv("BOT_TOKEN") BASE_URL = "https://api.mail.tm" MAX_LEN = 1200  # limit email body length
 
 ================= HELPERS =================
 
 def gen_password(length=12): return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-def clean_html(raw_html: str) -> str: if not raw_html: return "" text = re.sub(r"<[^>]+>", "", raw_html) return unescape(text).strip()
+def clean_html(raw_html: str) -> str: if not raw_html: return "" text = re.sub(r"<[^>]+>", "", raw_html) return unescape(text)
 
 ================= START =================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): text = ( "👑 MuDaSiR VIP Temp Mail Bot 👑\n" "━━━━━━━━━━━━━━━━━━━━━━\n\n" "> 🌙 Yo hi mausam ki ada dekh kar yaad aaya\n" "> Faqat kaise badaltay hain log, jaan-e-jana\n>\n" "> Tum bhi shayad isi mausam mein kahin kho gaye thay\n" "> Hum ne har simt tumhein dhoondha, magar paaya na gaya\n>\n" "> — Ahmad Faraz ✨\n\n" "📧 Create • 📥 Inbox • 🌐 Domains" )
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): text = ( "MuDaSiR VIP Temp Mail Bot\n" "────────────────────────\n\n" "Yo hi mausam ki ada dekh kar yaad aaya,\n" "Faqat kaise badaltay hain log jaan-e-jana.\n" "— Ahmad Faraz\n\n" "Create temporary emails & read inbox securely." )
 
 keyboard = [
-    [InlineKeyboardButton("✨ Create", callback_data="create"), InlineKeyboardButton("🌐 Domains", callback_data="domains")],
-    [InlineKeyboardButton("📥 Inbox", callback_data="inbox"), InlineKeyboardButton("✍️ Custom", callback_data="custom")],
+    [InlineKeyboardButton("✨ Create Email", callback_data="create"), InlineKeyboardButton("🌐 Domains", callback_data="domains")],
+    [InlineKeyboardButton("📥 Inbox", callback_data="inbox"), InlineKeyboardButton("✍️ Custom Email", callback_data="custom")],
 ]
 
-await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 ================= DOMAINS =================
 
 async def show_domains(message, context): domains = [] for page in range(1, 4): res = await asyncio.to_thread(requests.get, f"{BASE_URL}/domains?page={page}") data = res.json().get("hydra:member", []) if not data: break domains.extend(data)
 
 if not domains:
-    await message.reply_text("❌ No domains available")
+    await message.reply_text("No domains available.")
     return
 
 buttons = [[InlineKeyboardButton(d['domain'], callback_data=f"dom:{d['domain']}")] for d in domains[:12]]
-await message.reply_text("🌐 *Select Domain*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
+await message.reply_text("Select a domain:", reply_markup=InlineKeyboardMarkup(buttons))
 
 ================= CREATE ACCOUNT =================
 
 async def create_account(name=None, domain=None): if not domain: res = await asyncio.to_thread(requests.get, f"{BASE_URL}/domains") domain = res.json()["hydra:member"][0]["domain"]
 
-username = name or f"mudasir{random.randint(1000,9999)}"
+username = name or f"user{random.randint(1000,9999)}"
 email = f"{username}@{domain}"
 password = gen_password()
 
@@ -67,23 +77,23 @@ return {"email": email, "token": token}
 
 ================= INBOX =================
 
-async def show_inbox(message, context): token = context.user_data.get("token") if not token: await message.reply_text("❌ Create email first") return
+async def show_inbox(message, context): token = context.user_data.get("token") if not token: await message.reply_text("Create an email first.") return
 
 headers = {"Authorization": f"Bearer {token}"}
 res = await asyncio.to_thread(requests.get, f"{BASE_URL}/messages", headers=headers)
 msgs = res.json().get("hydra:member", [])
 
 if not msgs:
-    await message.reply_text("📭 Inbox empty", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="refresh")]]))
+    await message.reply_text("Inbox empty.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="refresh")]]))
     return
 
 buttons = []
 for m in msgs:
     subject = m.get('subject') or '(No subject)'
-    buttons.append([InlineKeyboardButton(f"📩 {subject}", callback_data=f"msg:{m['id']}")])
+    buttons.append([InlineKeyboardButton(subject, callback_data=f"msg:{m['id']}")])
 
 buttons.append([InlineKeyboardButton("🔄 Refresh", callback_data="refresh")])
-await message.reply_text("📥 *Inbox*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
+await message.reply_text("Inbox:", reply_markup=InlineKeyboardMarkup(buttons))
 
 ================= READ MESSAGE =================
 
@@ -102,25 +112,32 @@ elif data.get("html") and isinstance(data["html"], list):
     body = clean_html(data["html"][0])
 
 if not body.strip():
-    body = "📭 No readable content in this email."
+    body = "No readable content."
 
-text = (
-    f"📧 *From:* {sender}\n"
-    f"📝 *Subject:* {subject}\n\n"
-    f"💬 *Message:*\n"
-    f"\"{body[:3500]}\""
+body = body.strip()
+if len(body) > MAX_LEN:
+    body = body[:MAX_LEN] + "\n\n---\n(Trimmed)"
+
+message_text = (
+    f"FROM: {sender}\n"
+    f"SUBJECT: {subject}\n"
+    f"{'-'*30}\n"
+    f"{body}"
 )
 
 keyboard = []
 if data.get("hasAttachments"):
     for a in data.get("attachments", []):
         keyboard.append([
-            InlineKeyboardButton(f"📎 {a.get('filename', 'Attachment')}", url=f"{BASE_URL}{a['downloadUrl']}")
+            InlineKeyboardButton(
+                f"📎 {a.get('filename', 'Attachment')}",
+                url=f"{BASE_URL}{a['downloadUrl']}"
+            )
         ])
 
 keyboard.append([InlineKeyboardButton("🔄 Back to Inbox", callback_data="refresh")])
 
-await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+await query.message.reply_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 ================= MENU =================
 
@@ -129,21 +146,21 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE): q = update.c
 if q.data == "create":
     data = await create_account(domain=context.user_data.get("domain"))
     if not data:
-        await q.message.reply_text("❌ Failed to create email")
+        await q.message.reply_text("Failed to create email.")
         return
     context.user_data.update(data)
-    await q.message.reply_text(f"✅ Email Created\n📧 `{data['email']}`", parse_mode="Markdown")
+    await q.message.reply_text(f"Email created:\n{data['email']}")
 
 elif q.data == "domains":
     await show_domains(q.message, context)
 
 elif q.data.startswith("dom:"):
     context.user_data["domain"] = q.data.split(":", 1)[1]
-    await q.message.reply_text(f"✅ Domain selected: {context.user_data['domain']}")
+    await q.message.reply_text(f"Domain selected: {context.user_data['domain']}")
 
 elif q.data == "custom":
     context.user_data["await_custom"] = True
-    await q.message.reply_text("✍️ Send custom email name")
+    await q.message.reply_text("Send custom email name:")
 
 elif q.data in ("inbox", "refresh"):
     await show_inbox(q.message, context)
@@ -153,7 +170,7 @@ elif q.data.startswith("msg:"):
 
 ================= TEXT =================
 
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): if context.user_data.get("await_custom"): context.user_data["await_custom"] = False data = await create_account(name=update.message.text.strip(), domain=context.user_data.get("domain")) if not data: await update.message.reply_text("❌ Failed to create email") return context.user_data.update(data) await update.message.reply_text(f"✅ Email Created\n📧 {data['email']}", parse_mode="Markdown")
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): if context.user_data.get("await_custom"): context.user_data["await_custom"] = False data = await create_account(name=update.message.text.strip(), domain=context.user_data.get("domain")) if not data: await update.message.reply_text("Failed to create email.") return context.user_data.update(data) await update.message.reply_text(f"Email created:\n{data['email']}")
 
 ================= RUN =================
 
