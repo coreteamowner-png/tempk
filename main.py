@@ -1,19 +1,3 @@
-================= MuDaSiR VIP Mail.tm Telegram Bot =================
-
-COMPLETE FINAL VERSION
-
-✔ Reads ALL emails correctly
-
-✔ Links stay ORIGINAL & clickable
-
-✔ Email length controlled (not too long)
-
-✔ Text / HTML / Attachments supported
-
-✔ No Markdown bugs
-
-✔ Stable on Render
-
 import os import random import string import asyncio import re from html import unescape import requests
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup from telegram.ext import ( ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, )
