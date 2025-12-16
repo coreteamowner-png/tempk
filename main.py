@@ -136,18 +136,42 @@ async def read_message(query, context, msg_id):
     m = requests.get(f"{BASE_URL}/messages/{msg_id}", headers=headers).json()
 
     sender = m.get("from", {}).get("address", "")
-    subject = m.get("subject", "")
-    body = m.get("text", "No content")
+    subject = m.get("subject", "(No Subject)")
+    text_body = m.get("text")
+    html_body = m.get("html")
 
-    text = (
-        f"*From:* **{sender}**\n"
-        f"*Subject:* **{subject}**\n\n"
-        f"> {body}"
+    # Prefer HTML preview if available
+    body = text_body or (html_body[0] if isinstance(html_body, list) and html_body else "No content")
+
+    message_text = (
+        f"📧 *From:* **{sender}**
+"
+        f"📝 *Subject:* **{subject}**
+
+"
+        f"> {body[:3500]}"
     )
 
-    kb = [[InlineKeyboardButton("🔄 Refresh Inbox", callback_data="refresh")]]
+    kb = []
 
-    await query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+    # Attachments handling
+    if m.get("hasAttachments"):
+        for att in m.get("attachments", []):
+            kb.append([
+                InlineKeyboardButton(
+                    f"📎 {att.get('filename')}",
+                    url=f"{BASE_URL}{att.get('downloadUrl')}"
+                )
+            ])
+
+    kb.append([InlineKeyboardButton("🔄 Refresh Inbox", callback_data="refresh")])
+
+    await query.message.reply_text(
+        message_text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(kb),
+        disable_web_page_preview=False,
+    )
 
 # ================= MENU HANDLER =================
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
