@@ -144,12 +144,9 @@ async def read_message(query, context, msg_id):
     body = text_body or (html_body[0] if isinstance(html_body, list) and html_body else "No content")
 
     message_text = (
-        f"📧 *From:* **{sender}**
-"
-        f"📝 *Subject:* **{subject}**
-
-"
-        f"> {body[:3500]}"
+    f"📧 *From:* **{sender}**\n"
+    f"📝 *Subject:* **{subject}**\n\n"
+    f"> {body[:3500]}"
     )
 
     kb = []
