@@ -36,7 +36,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = [
-        [InlineKeyboardButton("✨ Create Email", callback_data="create")],
+        [InlineKeyboardButton("✨ Create", callback_data="create"), InlineKeyboardButton("🌐 Domains", callback_data="domains")],
+        [InlineKeyboardButton("📥 Inbox", callback_data="inbox"), InlineKeyboardButton("✍️ Custom", callback_data="custom")]
+    ],
         [InlineKeyboardButton("📥 Inbox", callback_data="inbox")],
         [InlineKeyboardButton("✍️ Custom Email", callback_data="custom")],
     ]
