@@ -1,16 +1,16 @@
-================= MuDaSiR VIP Mail.tm Telegram Bot =================
+# ================= MuDaSiR VIP Mail.tm Telegram Bot =================
 
-COMPLETE FINAL FIXED VERSION (NO SYNTAX ERRORS)
+# COMPLETE FINAL FIXED VERSION (NO SYNTAX ERRORS)
 
-✔ /start works
+# ✔ /start works
 
-✔ Manual commands added
+# ✔ Manual commands added
 
-✔ Inbox + email reading fixed
+# ✔ Inbox + email reading fixed
 
-✔ Hinglish + Emoji UI
+# ✔ Hinglish + Emoji UI
 
-✔ Render ready
+# ✔ Render ready
 
 import os import random import string import asyncio import re from html import unescape import requests
 
