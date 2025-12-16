@@ -1,22 +1,22 @@
-MuDaSiR VIP Mail.tm Telegram Bot (FINAL – STABLE)
+================= MuDaSiR VIP Mail.tm Telegram Bot =================
 
-✔ Inbox works
+FINAL VERSION – READS ALL EMAIL TYPES (TEXT / HTML / IMAGE / ATTACHMENT)
 
-✔ No false 'Create email first'
+Stable • Async-safe • Production-ready
 
-✔ Domains selectable
+import os import random import string import asyncio import re from html import unescape import requests
 
-✔ Custom email works
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup from telegram.ext import ( ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, )
 
-✔ Clean async-safe logic
-
-import os import random import string import asyncio import requests from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup from telegram.ext import ( ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, )
+================= CONFIG =================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN") BASE_URL = "https://api.mail.tm"
 
-================= UTIL =================
+================= HELPERS =================
 
 def gen_password(length=12): return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+def clean_html(raw_html: str) -> str: if not raw_html: return "" text = re.sub(r"<[^>]+>", "", raw_html) return unescape(text).strip()
 
 ================= START =================
 
@@ -37,10 +37,7 @@ if not domains:
     await message.reply_text("❌ No domains available")
     return
 
-buttons = []
-for d in domains[:10]:
-    buttons.append([InlineKeyboardButton(d['domain'], callback_data=f"dom:{d['domain']}")])
-
+buttons = [[InlineKeyboardButton(d['domain'], callback_data=f"dom:{d['domain']}")] for d in domains[:12]]
 await message.reply_text("🌐 *Select Domain*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
 
 ================= CREATE ACCOUNT =================
@@ -80,33 +77,50 @@ if not msgs:
     await message.reply_text("📭 Inbox empty", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="refresh")]]))
     return
 
-buttons = [[InlineKeyboardButton(f"📩 {m.get('subject') or '(No subject)'}", callback_data=f"msg:{m['id']}")] for m in msgs]
-buttons.append([InlineKeyboardButton("🔄 Refresh", callback_data="refresh")])
+buttons = []
+for m in msgs:
+    subject = m.get('subject') or '(No subject)'
+    buttons.append([InlineKeyboardButton(f"📩 {subject}", callback_data=f"msg:{m['id']}")])
 
+buttons.append([InlineKeyboardButton("🔄 Refresh", callback_data="refresh")])
 await message.reply_text("📥 *Inbox*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
 
 ================= READ MESSAGE =================
 
-async def read_message(query, context, msg_id): token = context.user_data.get("token") headers = {"Authorization": f"Bearer {token}"} m = await asyncio.to_thread(requests.get, f"{BASE_URL}/messages/{msg_id}", headers=headers) data = m.json()
+async def read_message(query, context, msg_id): token = context.user_data.get("token") headers = {"Authorization": f"Bearer {token}"}
 
-sender = data.get("from", {}).get("address", "")
-subject = data.get("subject", "")
-body = data.get("text") or (data.get("html", [""])[0])
+res = await asyncio.to_thread(requests.get, f"{BASE_URL}/messages/{msg_id}", headers=headers)
+data = res.json()
+
+sender = data.get("from", {}).get("address", "Unknown")
+subject = data.get("subject") or "(No Subject)"
+
+body = ""
+if data.get("text"):
+    body = data["text"]
+elif data.get("html") and isinstance(data["html"], list):
+    body = clean_html(data["html"][0])
+
+if not body.strip():
+    body = "📭 No readable content in this email."
 
 text = (
-    f"📧 *From:* **{sender}**\n"
-    f"📝 *Subject:* **{subject}**\n\n"
-    f"> {body[:3500]}"
+    f"📧 *From:* {sender}\n"
+    f"📝 *Subject:* {subject}\n\n"
+    f"💬 *Message:*\n"
+    f"\"{body[:3500]}\""
 )
 
-kb = []
+keyboard = []
 if data.get("hasAttachments"):
     for a in data.get("attachments", []):
-        kb.append([InlineKeyboardButton(f"📎 {a['filename']}", url=f"{BASE_URL}{a['downloadUrl']}")])
+        keyboard.append([
+            InlineKeyboardButton(f"📎 {a.get('filename', 'Attachment')}", url=f"{BASE_URL}{a['downloadUrl']}")
+        ])
 
-kb.append([InlineKeyboardButton("🔄 Refresh Inbox", callback_data="refresh")])
+keyboard.append([InlineKeyboardButton("🔄 Back to Inbox", callback_data="refresh")])
 
-await query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 ================= MENU =================
 
