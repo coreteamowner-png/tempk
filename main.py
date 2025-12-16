@@ -34,47 +34,50 @@ def clean_html(raw_html: str) -> str:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "👑 MuDaSiR VIP Temp Mail Bot 👑\n\n"
-        "Yo hi mausam ki ada dekh kar yaad aaya,\n"
-        "Faqat kaise badaltay hain log jaan-e-jana.\n"
-        "— Ahmad Faraz 🖤\n\n"
-        "Commands:\n"
-        "/create – Create email\n"
-        "/inbox – Open inbox\n"
-        "/domains – Select domain\n"
-        "/custom – Custom email\n"
-        "/help – Help menu"
+        "🩷 *MuDaSiR VIP Temp Mail Bot* 🩷\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "“Yo hi mausam ki ada dekh kar yaad aaya,\n"
+        "Faqat kaise badaltay hain log jaan-e-jana.”\n"
+        "— *Ahmad Faraz* ✨\n\n"
+        "💌 Temporary Emails | 📥 Secure Inbox | 📎 Attachments\n\n"
+        "👇 Choose an option"
     )
 
     keyboard = [
         [
-            InlineKeyboardButton("✨ Create Email", callback_data="create"),
-            InlineKeyboardButton("🌐 Domains", callback_data="domains"),
+            InlineKeyboardButton("💖 Create Email", callback_data="create"),
+            InlineKeyboardButton("🌸 Domains", callback_data="domains"),
         ],
         [
             InlineKeyboardButton("📥 Inbox", callback_data="inbox"),
             InlineKeyboardButton("✍️ Custom Email", callback_data="custom"),
         ],
+        [
+            InlineKeyboardButton("🆘 Help", callback_data="help"),
+        ],
     ]
 
     await update.message.reply_text(
-        text, reply_markup=InlineKeyboardMarkup(keyboard)
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
     )
 
 
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def help_menu(message):
     text = (
-        "📖 HELP MENU\n\n"
-        "Developer: MuDaSiR\n"
-        "Powered by Mail.tm\n\n"
-        "Use:\n"
+        "🩷 *HELP MENU* 🩷\n\n"
+        "👨‍💻 Developer: *MuDaSiR*\n"
+        "🛠 API: Mail.tm\n\n"
+        "📌 Commands:\n"
         "/start – Start bot\n"
-        "/create – Auto email\n"
+        "/create – Create email\n"
         "/custom – Custom email\n"
-        "/domains – Change domain\n"
-        "/inbox – Inbox\n"
+        "/domains – Select domain\n"
+        "/inbox – Open inbox\n\n"
+        "✨ Buttons bhi use kar sakte ho\n"
     )
-    await update.message.reply_text(text)
+    await message.reply_text(text, parse_mode="Markdown")
 
 
 async def show_domains(message, context):
@@ -88,16 +91,16 @@ async def show_domains(message, context):
             break
         domains.extend(data)
 
-    if not domains:
-        await message.reply_text("No domains available")
-        return
-
     buttons = [
-        [InlineKeyboardButton(d["domain"], callback_data=f"dom:{d['domain']}")]
-        for d in domains[:12]
+        [InlineKeyboardButton(f"🌸 {d['domain']}", callback_data=f"dom:{d['domain']}")]
+        for d in domains[:10]
     ]
+    buttons.append([InlineKeyboardButton("⬅️ Back", callback_data="back")])
+
     await message.reply_text(
-        "🌐 Select domain:", reply_markup=InlineKeyboardMarkup(buttons)
+        "🌐 *Select a domain*",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode="Markdown",
     )
 
 
@@ -130,7 +133,7 @@ async def create_account(name=None, domain=None):
 async def show_inbox(message, context):
     token = context.user_data.get("token")
     if not token:
-        await message.reply_text("⚠️ Pehle /create karo")
+        await message.reply_text("⚠️ Pehle email create karo 🩷")
         return
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -140,18 +143,33 @@ async def show_inbox(message, context):
     msgs = res.json().get("hydra:member", [])
 
     if not msgs:
-        await message.reply_text("📭 Inbox empty")
+        keyboard = [
+            [InlineKeyboardButton("🔄 Refresh", callback_data="inbox")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="back")],
+        ]
+        await message.reply_text(
+            "📭 *Inbox empty*",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
         return
 
-    buttons = []
-    for m in msgs:
-        subject = m.get("subject") or "(No Subject)"
-        buttons.append(
-            [InlineKeyboardButton(subject, callback_data=f"msg:{m['id']}")]
-        )
+    buttons = [
+        [
+            InlineKeyboardButton(
+                f"💌 {m.get('subject') or 'No Subject'}",
+                callback_data=f"msg:{m['id']}",
+            )
+        ]
+        for m in msgs
+    ]
+    buttons.append([InlineKeyboardButton("🔄 Refresh", callback_data="inbox")])
+    buttons.append([InlineKeyboardButton("⬅️ Back", callback_data="back")])
 
     await message.reply_text(
-        "📥 Inbox:", reply_markup=InlineKeyboardMarkup(buttons)
+        "📥 *Your Inbox*",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode="Markdown",
     )
 
 
@@ -165,7 +183,7 @@ async def read_message(query, context, msg_id):
     data = res.json()
 
     sender = data.get("from", {}).get("address", "Unknown")
-    subject = data.get("subject") or "(No Subject)"
+    subject = data.get("subject") or "No Subject"
 
     body = ""
     if data.get("text"):
@@ -177,12 +195,12 @@ async def read_message(query, context, msg_id):
         body = "No readable content"
 
     if len(body) > MAX_LEN:
-        body = body[:MAX_LEN] + "\n--- trimmed ---"
+        body = body[:MAX_LEN] + "\n\n…(trimmed)"
 
     text = (
-        f"FROM: {sender}\n"
-        f"SUBJECT: {subject}\n"
-        f"{'-'*30}\n"
+        f"🩷 *From:* {sender}\n"
+        f"💖 *Subject:* {subject}\n"
+        f"━━━━━━━━━━━━━━\n"
         f"{body}"
     )
 
@@ -192,14 +210,24 @@ async def read_message(query, context, msg_id):
             keyboard.append(
                 [
                     InlineKeyboardButton(
-                        a.get("filename", "Attachment"),
+                        f"📎 {a.get('filename','Attachment')}",
                         url=f"{BASE_URL}{a['downloadUrl']}",
                     )
                 ]
             )
 
+    keyboard.append(
+        [
+            InlineKeyboardButton("📥 Inbox", callback_data="inbox"),
+            InlineKeyboardButton("🔄 Refresh", callback_data="inbox"),
+        ]
+    )
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="back")])
+
     await query.message.reply_text(
-        text, reply_markup=InlineKeyboardMarkup(keyboard)
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
     )
 
 
@@ -210,10 +238,13 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data == "create":
         data = await create_account(domain=context.user_data.get("domain"))
         if not data:
-            await q.message.reply_text("Failed to create email")
+            await q.message.reply_text("❌ Failed to create email")
             return
         context.user_data.update(data)
-        await q.message.reply_text(f"✅ Email created:\n{data['email']}")
+        await q.message.reply_text(
+            f"💖 *Email Created*\n\n`{data['email']}`",
+            parse_mode="Markdown",
+        )
 
     elif q.data == "domains":
         await show_domains(q.message, context)
@@ -221,18 +252,25 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif q.data.startswith("dom:"):
         context.user_data["domain"] = q.data.split(":", 1)[1]
         await q.message.reply_text(
-            f"Domain set: {context.user_data['domain']}"
+            f"🌸 Domain set to `{context.user_data['domain']}`",
+            parse_mode="Markdown",
         )
 
     elif q.data == "custom":
         context.user_data["await_custom"] = True
-        await q.message.reply_text("Custom name bhejo")
+        await q.message.reply_text("✍️ Custom name bhejo")
 
     elif q.data == "inbox":
         await show_inbox(q.message, context)
 
     elif q.data.startswith("msg:"):
         await read_message(q, context, q.data.split(":", 1)[1])
+
+    elif q.data == "help":
+        await help_menu(q.message)
+
+    elif q.data == "back":
+        await start(q, context)
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -243,23 +281,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             domain=context.user_data.get("domain"),
         )
         if not data:
-            await update.message.reply_text("Failed")
+            await update.message.reply_text("❌ Failed")
             return
         context.user_data.update(data)
         await update.message.reply_text(
-            f"✅ Email created:\n{data['email']}"
+            f"💖 *Email Created*\n\n`{data['email']}`",
+            parse_mode="Markdown",
         )
 
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_cmd))
-app.add_handler(CommandHandler("create", start))
+app.add_handler(CommandHandler("help", help_menu))
 app.add_handler(CommandHandler("inbox", lambda u, c: asyncio.create_task(show_inbox(u.message, c))))
-app.add_handler(CommandHandler("domains", lambda u, c: asyncio.create_task(show_domains(u.message, c))))
-app.add_handler(CommandHandler("custom", lambda u, c: asyncio.create_task(u.message.reply_text("Custom name bhejo"))))
-
 app.add_handler(CallbackQueryHandler(menu))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
