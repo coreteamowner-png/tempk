@@ -1,12 +1,7 @@
-# ================================
-# MuDaSiR VIP Mail.tm Telegram Bot
-# FULL • CLEAN • WORKING • VIP UI
-# ================================
-
 import os
 import random
 import string
-import asyncio
+import re
 import requests
 from bs4 import BeautifulSoup
 from telegram import (
@@ -21,264 +16,199 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ================================
-# CONFIG
-# ================================
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # set in Render
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 MAILTM_BASE = "https://api.mail.tm"
 
-# ================================
-# IN-MEMORY USER STORE
-# ================================
-# user_id -> {email, password, token, account_id}
 USERS = {}
 
-# ================================
-# UTILITIES
-# ================================
-def rand_string(n=8):
-    return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
+def rand_digits(n):
+    return "".join(random.choices(string.digits, k=n))
 
+def strong_password():
+    return f"Malik{rand_digits(4)}$"
 
-def extract_readable_content(message: dict) -> str:
-    # Prefer plain text
-    if message.get("text") and message["text"].strip():
-        return message["text"].strip()
-
-    # HTML handling (array)
-    html_blocks = message.get("html")
-    if html_blocks:
-        html = "\n".join(html_blocks)
-        soup = BeautifulSoup(html, "html.parser")
-        for t in soup(["script", "style", "noscript"]):
-            t.decompose()
-        text = soup.get_text(separator="\n")
-        lines = []
-        for line in text.splitlines():
-            line = line.strip()
-            if line and len(line) > 2:
-                lines.append(line)
-        cleaned = "\n".join(lines)
-        if cleaned.strip():
-            return cleaned.strip()
-
-    # Fallback
-    if message.get("intro"):
-        return message["intro"]
-
-    return "📭 No readable content found."
-
-
-def auth_headers(token: str):
+def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
-
-# ================================
-# MAIL.TM API
-# ================================
 def get_domains():
     r = requests.get(f"{MAILTM_BASE}/domains")
     r.raise_for_status()
-    data = r.json()
-    return [d["domain"] for d in data.get("hydra:member", [])]
-
+    return [d["domain"] for d in r.json().get("hydra:member", [])]
 
 def create_account(address, password):
-    r = requests.post(
-        f"{MAILTM_BASE}/accounts",
-        json={"address": address, "password": password},
-    )
+    r = requests.post(f"{MAILTM_BASE}/accounts", json={"address": address, "password": password})
     r.raise_for_status()
     return r.json()
 
-
 def get_token(address, password):
-    r = requests.post(
-        f"{MAILTM_BASE}/token",
-        json={"address": address, "password": password},
-    )
+    r = requests.post(f"{MAILTM_BASE}/token", json={"address": address, "password": password})
     r.raise_for_status()
     return r.json()["token"]
 
-
 def get_messages(token):
-    r = requests.get(
-        f"{MAILTM_BASE}/messages",
-        headers=auth_headers(token),
-    )
+    r = requests.get(f"{MAILTM_BASE}/messages", headers=auth_headers(token))
     r.raise_for_status()
     return r.json().get("hydra:member", [])
 
-
-def get_message(token, msg_id):
-    r = requests.get(
-        f"{MAILTM_BASE}/messages/{msg_id}",
-        headers=auth_headers(token),
-    )
+def get_message(token, mid):
+    r = requests.get(f"{MAILTM_BASE}/messages/{mid}", headers=auth_headers(token))
     r.raise_for_status()
     return r.json()
 
+def clean_html(html_blocks):
+    soup = BeautifulSoup("\n".join(html_blocks), "html.parser")
+    for t in soup(["script", "style", "noscript", "img"]):
+        t.decompose()
+    text = soup.get_text("\n")
+    lines = []
+    for l in text.splitlines():
+        l = l.strip()
+        if not l:
+            continue
+        if l.startswith("http"):
+            continue
+        if "unsubscribe" in l.lower():
+            continue
+        lines.append(l)
+    return "\n".join(lines)
 
-# ================================
-# BOT HANDLERS
-# ================================
+def extract_body(msg):
+    if msg.get("text"):
+        return msg["text"]
+    if msg.get("html"):
+        return clean_html(msg["html"])
+    return msg.get("intro", "")
+
+def find_otp(text):
+    m = re.search(r"\b\d{4,8}\b", text)
+    return m.group(0) if m else None
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🩷 *Welcome to MuDaSiR VIP Temp Mail* 🩷\n\n"
-        "> _Yo hi mausam ki ada dekh kar yaad aaya hai_\n"
-        "> _Faqat kaise badalte hain log, jaane jaana…_\n\n"
-        "✨ Features:\n"
-        "• Create temp email\n"
-        "• Read OTP / HTML / Images\n"
-        "• Inbox refresh\n\n"
-        "👇 Choose an option"
-    )
-    keyboard = InlineKeyboardMarkup([
+    kb = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("💌 Create Email", callback_data="create"),
             InlineKeyboardButton("📥 Inbox", callback_data="inbox"),
-        ],
-        [
-            InlineKeyboardButton("🔄 Refresh", callback_data="refresh"),
         ]
     ])
-    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
-
-
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🩷 *MuDaSiR VIP Help*\n\n"
-        "Commands:\n"
-        "/start – Open menu\n"
-        "/create – Create email\n"
-        "/inbox – View inbox\n\n"
-        "Developer: *MuDaSiR*\n"
-        "VIP Temp Mail Bot",
-        parse_mode="Markdown"
+        "🩷 *MuDaSiR VIP Temp Mail*\n\n"
+        "> _Yo hi mausam ki ada dekh kar yaad aaya hai_\n"
+        "> _Faqat kaise badalte hain log, jaane jaana…_\n\n"
+        "👇 Choose option",
+        parse_mode="Markdown",
+        reply_markup=kb
     )
 
-
 async def create_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    uid = update.effective_user.id
     domains = get_domains()
     domain = random.choice(domains)
-
-    name = f"mudasir_{rand_string(5)}"
-    email = f"{name}@{domain}"
-    password = rand_string(10)
-
+    username = f"mudasir_{rand_digits(10)}"
+    email = f"{username}@{domain}"
+    password = strong_password()
     acc = create_account(email, password)
     token = get_token(email, password)
 
-    USERS[user_id] = {
+    USERS[uid] = {
         "email": email,
         "password": password,
         "token": token,
         "account_id": acc["id"],
     }
 
-    text = (
-        f"🩷 *Email Created Successfully*\n\n"
-        f"📧 `{email}`\n\n"
-        "👇 Inbox open karo"
-    )
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📥 Open Inbox", callback_data="inbox")]
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📋 Copy Email", callback_data="copy_email")],
+        [InlineKeyboardButton("📋 Copy Password", callback_data="copy_pass")],
+        [InlineKeyboardButton("📥 Open Inbox", callback_data="inbox")],
     ])
 
-    if update.message:
-        await update.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
-    else:
-        await update.callback_query.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
-
+    await update.callback_query.message.reply_text(
+        f"🩷 *Email Created*\n\n"
+        f"📧 `{email}`\n"
+        f"🔑 `{password}`",
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
 
 async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in USERS:
-        await update.callback_query.message.reply_text(
-            "❌ Pehle email create karo."
-        )
+    uid = update.effective_user.id
+    if uid not in USERS:
+        await update.callback_query.message.reply_text("❌ Create email first.")
         return
-
-    token = USERS[user_id]["token"]
-    messages = get_messages(token)
-
-    if not messages:
-        await update.callback_query.message.reply_text("📭 Inbox empty hai.")
+    msgs = get_messages(USERS[uid]["token"])
+    if not msgs:
+        await update.callback_query.message.reply_text("📭 Inbox empty.")
         return
-
     buttons = []
-    for m in messages[:10]:
-        subject = m.get("subject", "No Subject")
-        buttons.append([
-            InlineKeyboardButton(
-                f"📨 {subject[:30]}",
-                callback_data=f"read_{m['id']}"
-            )
-        ])
-
+    for m in msgs[:10]:
+        sub = m.get("subject", "No Subject")
+        buttons.append([InlineKeyboardButton(sub[:30], callback_data=f"read_{m['id']}")])
     await update.callback_query.message.reply_text(
-        "📥 *Your Inbox*",
-        reply_markup=InlineKeyboardMarkup(buttons),
+        "📥 *Inbox*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+async def read_mail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    uid = q.from_user.id
+    mid = q.data.split("_", 1)[1]
+    msg = get_message(USERS[uid]["token"], mid)
+    body = extract_body(msg)
+    otp = find_otp(body)
+
+    if otp:
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📋 Copy OTP", callback_data=f"copy_otp_{otp}")],
+            [InlineKeyboardButton("📄 View Full Mail", callback_data=f"full_{mid}")]
+        ])
+        await q.message.reply_text(
+            f"🔐 *Verification Code*\n\n"
+            f"`{otp}`",
+            parse_mode="Markdown",
+            reply_markup=kb
+        )
+    else:
+        await q.message.reply_text(
+            f"*{msg.get('subject','No Subject')}*\n\n```text\n{body[:3500]}\n```",
+            parse_mode="Markdown"
+        )
+
+async def full_mail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    uid = q.from_user.id
+    mid = q.data.split("_", 1)[1]
+    msg = get_message(USERS[uid]["token"], mid)
+    body = extract_body(msg)
+    await q.message.reply_text(
+        f"*{msg.get('subject','No Subject')}*\n\n```text\n{body[:3500]}\n```",
         parse_mode="Markdown"
     )
 
-
-async def read_mail(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    msg_id = query.data.split("_", 1)[1]
-
-    token = USERS[user_id]["token"]
-    data = get_message(token, msg_id)
-
-    sender = data["from"]["address"]
-    subject = data.get("subject", "No Subject")
-    body = extract_readable_content(data)
-
-    text = (
-        f"🩷 *From:* `{sender}`\n"
-        f"💖 *Subject:* *{subject}*\n"
-        f"━━━━━━━━━━━━━━\n\n"
-        f"```text\n{body[:3500]}\n```"
-    )
-
-    await query.message.reply_text(text, parse_mode="Markdown")
-
-
-async def refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await inbox(update, context)
-
-
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = update.callback_query.data
-    await update.callback_query.answer()
-
-    if data == "create":
+    q = update.callback_query
+    await q.answer()
+    d = q.data
+    if d == "create":
         await create_email(update, context)
-    elif data == "inbox":
+    elif d == "inbox":
         await inbox(update, context)
-    elif data == "refresh":
-        await refresh(update, context)
-    elif data.startswith("read_"):
+    elif d.startswith("read_"):
         await read_mail(update, context)
+    elif d.startswith("full_"):
+        await full_mail(update, context)
+    elif d == "copy_email":
+        await q.message.reply_text(USERS[q.from_user.id]["email"])
+    elif d == "copy_pass":
+        await q.message.reply_text(USERS[q.from_user.id]["password"])
+    elif d.startswith("copy_otp_"):
+        await q.message.reply_text(d.replace("copy_otp_", ""))
 
-
-# ================================
-# MAIN
-# ================================
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("create", create_email))
-    app.add_handler(CommandHandler("inbox", inbox))
     app.add_handler(CallbackQueryHandler(buttons))
-
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
