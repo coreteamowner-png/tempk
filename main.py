@@ -1,9 +1,11 @@
 import os
 import random
 import string
-import re
 import requests
+import re
+from bs4 import BeautifulSoup
 from html import unescape
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -17,217 +19,250 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-MAILTM_BASE = "https://api.mail.tm"
 
-USERS = {}
+BASE_URL = "https://api.mail.tm"
 
-PAK_GIRL_NAMES = [
-    "Ayesha","Fatima","Zainab","Hira","Noor","Iqra","Maryam",
-    "Laiba","Eman","Sana","Anaya","Areeba","Mahnoor","Alina"
-]
+users = {}  # user_id -> account data
 
-JOHN_ELIA_SHAYARI = [
-    "یہ مجھے چین کیوں نہیں پڑتا\nایک ہی شخص تھا جہاں میں کیا",
-    "بہت قریب آتی جا رہی ہو\nبچھڑنے کا ارادہ تو نہیں ہے",
-    "عجیب سا حق ہے تم پر\nکہ تمہاری خاموشی بھی گفتگو لگتی ہے",
-]
 
-def rand_digits(n):
-    return "".join(random.choices(string.digits, k=n))
+# ---------- HELPERS ----------
 
-def get_domains():
-    r = requests.get(f"{MAILTM_BASE}/domains")
-    r.raise_for_status()
-    return [d["domain"] for d in r.json().get("hydra:member", [])]
+def random_name():
+    pak_girls = [
+        "Ayesha", "Hira", "Fatima", "Zainab", "Iqra",
+        "Sana", "Noor", "Laiba", "Maryam", "Anaya"
+    ]
+    return random.choice(pak_girls)
 
-def create_account(address, password):
-    r = requests.post(f"{MAILTM_BASE}/accounts", json={"address": address, "password": password})
-    r.raise_for_status()
-    return r.json()
 
-def get_token(address, password):
-    r = requests.post(f"{MAILTM_BASE}/token", json={"address": address, "password": password})
-    r.raise_for_status()
-    return r.json()["token"]
+def generate_username(name):
+    digits = ''.join(random.choices(string.digits, k=6))
+    return (name.lower() + digits)[:10]
 
-def auth_headers(token):
-    return {"Authorization": f"Bearer {token}"}
 
-def get_messages(token):
-    r = requests.get(f"{MAILTM_BASE}/messages", headers=auth_headers(token))
-    r.raise_for_status()
-    return r.json().get("hydra:member", [])
+def generate_password(name):
+    base = f"{name}786$"
+    return base[:12]
 
-def get_message(token, mid):
-    r = requests.get(f"{MAILTM_BASE}/messages/{mid}", headers=auth_headers(token))
-    r.raise_for_status()
-    return r.json()
 
-def clean_text(text):
+def clean_html(html):
+    soup = BeautifulSoup(html, "html.parser")
+
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+
+    text = soup.get_text(separator="\n")
     text = unescape(text)
-    lines = []
-    for l in text.splitlines():
-        l = l.strip()
-        if not l:
-            continue
-        if l.startswith("http"):
-            continue
-        if "unsubscribe" in l.lower():
-            continue
-        lines.append(l)
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     return "\n".join(lines)
 
-def extract_body(msg):
-    if msg.get("text"):
-        return clean_text(msg["text"])
-    if msg.get("html"):
-        return clean_text(" ".join(msg["html"]))
-    return clean_text(msg.get("intro", ""))
 
-def find_otp(text):
-    m = re.search(r"\b\d{4,8}\b", text)
-    return m.group(0) if m else None
+def extract_otp(text):
+    match = re.search(r"\b(\d{4,8})\b", text)
+    return match.group(1) if match else None
+
+
+# ---------- COMMANDS ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    shayr = random.choice(JOHN_ELIA_SHAYARI)
-    await update.message.reply_text(
-        f"🩷 *MuDaSiR VIP Temp Mail*\n\n"
-        f"Assalamualaikum {update.effective_user.mention_html()}\n\n"
-        f"〝{shayr}〞\n\n"
-        f"👇 Choose Option",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("✉️ Create Mail", callback_data="create"),
-                InlineKeyboardButton("📥 Inbox", callback_data="inbox")
-            ]
-        ])
+    user = update.effective_user
+
+    shayari = (
+        "❝\n"
+        "یہ مجھے چین کیوں نہیں پڑتا\n"
+        "ایک ہی شخص تھا جہاں میں کیا\n\n"
+        "ہم نے مانا کہ تغافل نہ کرو گے، لیکن\n"
+        "خاک ہو جائیں گے ہم، تم کو خبر ہونے تک\n"
+        "❞"
     )
 
-async def create_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    uid = q.from_user.id
+    text = (
+        f"🩷 *Assalamualaikum {user.mention_html()}*\n\n"
+        f"*MuDaSiR VIP Temp Mail Bot*\n\n"
+        f"{shayari}\n\n"
+        "👇 *Click below to create your VIP email*"
+    )
 
-    name = random.choice(PAK_GIRL_NAMES)
-    username = (name.lower() + rand_digits(10))[:10]
-    password = (name + "786$")[:12]
+    keyboard = [
+        [InlineKeyboardButton("📧 Create Email", callback_data="create")]
+    ]
 
-    domain = random.choice(get_domains())
-    email = f"{username}@{domain}"
+    await update.message.reply_html(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-    acc = create_account(email, password)
-    token = get_token(email, password)
 
-    USERS[uid] = {
-        "email": email,
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🩷 *MuDaSiR VIP Temp Mail — Help*\n\n"
+        "👨‍💻 Developer: *Mudasir*\n\n"
+        "📌 *Commands*\n"
+        "/start – Start bot\n"
+        "/help – Full guide\n\n"
+        "🛠 *How to use*\n"
+        "1️⃣ Create Email\n"
+        "2️⃣ Open Inbox\n"
+        "3️⃣ OTP auto detected\n"
+        "4️⃣ View full email anytime\n\n"
+        "ℹ️ Telegram bots cannot auto-copy.\n"
+        "Long-press text to copy.\n\n"
+        "✨ Enjoy VIP experience ✨"
+    )
+
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+# ---------- CALLBACKS ----------
+
+async def create_email(query, user_id):
+    name = random_name()
+    username = generate_username(name)
+    password = generate_password(name)
+
+    domains = requests.get(f"{BASE_URL}/domains").json()["hydra:member"]
+    domain = domains[0]["domain"]
+
+    address = f"{username}@{domain}"
+
+    res = requests.post(
+        f"{BASE_URL}/accounts",
+        json={"address": address, "password": password},
+    )
+
+    if res.status_code not in (200, 201):
+        await query.message.reply_text("❌ Failed to create email")
+        return
+
+    token = requests.post(
+        f"{BASE_URL}/token",
+        json={"address": address, "password": password},
+    ).json()["token"]
+
+    users[user_id] = {
+        "address": address,
         "password": password,
-        "username": username,
-        "name": name,
         "token": token,
-        "account_id": acc["id"],
     }
 
     text = (
         "💌 *EMAIL CREATED*\n\n"
-        f"📧 *Email:* `{email}`\n"
-        f"📛 *Name:* `{name}`\n"
-        f"🔇 *Username:* `{username}`\n"
-        f"💻 *Password:* `{password}`"
+        f"📧 *Email:*\n`{address}`\n\n"
+        f"📛 *Name:*\n`{name}`\n\n"
+        f"🔇 *Username:*\n`{username}`\n\n"
+        f"💻 *Password:*\n`{password}`"
     )
 
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✉️ Copy Email", callback_data="copy_email"),
-            InlineKeyboardButton("📛 Copy Name", callback_data="copy_name")
-        ],
-        [
-            InlineKeyboardButton("🔇 Copy Username", callback_data="copy_user"),
-            InlineKeyboardButton("💻 Copy Password", callback_data="copy_pass")
-        ],
-        [
-            InlineKeyboardButton("📥 Open Inbox", callback_data="inbox")
-        ]
-    ])
+    keyboard = [
+        [InlineKeyboardButton("📥 Inbox", callback_data="inbox")]
+    ]
 
-    await q.message.reply_text(text, parse_mode="Markdown", reply_markup=kb)
+    await query.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
 
-async def inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    uid = q.from_user.id
-    if uid not in USERS:
-        await q.message.reply_text("❌ Create email first.")
+
+async def inbox(query, user_id):
+    if user_id not in users:
+        await query.message.reply_text("❌ Create email first")
         return
 
-    msgs = get_messages(USERS[uid]["token"])
-    if not msgs:
-        await q.message.reply_text("📭 Inbox empty.")
+    token = users[user_id]["token"]
+
+    headers = {"Authorization": f"Bearer {token}"}
+    msgs = requests.get(f"{BASE_URL}/messages", headers=headers).json()
+
+    mails = msgs.get("hydra:member", [])
+    if not mails:
+        await query.message.reply_text("📭 Inbox empty")
         return
 
     buttons = []
-    for m in msgs[:10]:
+    for m in mails:
+        subject = m["subject"] or "No Subject"
         buttons.append([
-            InlineKeyboardButton(
-                f"📨 {m.get('subject','No Subject')[:30]}",
-                callback_data=f"read_{m['id']}"
-            )
+            InlineKeyboardButton(subject[:40], callback_data=f"mail:{m['id']}")
         ])
 
-    await q.message.reply_text(
-        "📥 *Inbox*",
+    buttons.append([InlineKeyboardButton("🔄 Refresh", callback_data="inbox")])
+
+    await query.message.reply_text(
+        "📨 *Inbox*",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(buttons)
+        reply_markup=InlineKeyboardMarkup(buttons),
     )
 
-async def read_mail(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    uid = q.from_user.id
-    mid = q.data.split("_", 1)[1]
 
-    msg = get_message(USERS[uid]["token"], mid)
-    body = extract_body(msg)
-    otp = find_otp(body)
+async def read_mail(query, user_id, mail_id):
+    token = users[user_id]["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    mail = requests.get(
+        f"{BASE_URL}/messages/{mail_id}", headers=headers
+    ).json()
+
+    subject = mail.get("subject", "No Subject")
+    sender = mail.get("from", {}).get("address", "Unknown")
+
+    body = ""
+    if mail.get("html"):
+        body = clean_html(mail["html"][0])
+    else:
+        body = mail.get("text", "")
+
+    otp = extract_otp(body)
 
     if otp:
-        await q.message.reply_text(
-            f"🔐 *Verification Code*\n\n`{otp}`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📋 Copy OTP", callback_data=f"copy_otp_{otp}")]
-            ])
+        text = (
+            "🔐 *OTP DETECTED*\n\n"
+            f"`{otp}`\n\n"
+            "👇 Full mail below"
         )
     else:
-        await q.message.reply_text(
-            f"*{msg.get('subject','No Subject')}*\n\n```text\n{body[:3500]}\n```",
-            parse_mode="Markdown"
-        )
+        text = ""
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    d = q.data
+    text += (
+        "\n\n"
+        f"📌 *Subject:* {subject}\n"
+        f"📧 *From:* {sender}\n\n"
+        f"```{body[:3500]}```"
+    )
 
-    if d == "create":
-        await create_email(update, context)
-    elif d == "inbox":
-        await inbox(update, context)
-    elif d.startswith("read_"):
-        await read_mail(update, context)
-    elif d == "copy_email":
-        await q.message.reply_text(USERS[q.from_user.id]["email"])
-    elif d == "copy_name":
-        await q.message.reply_text(USERS[q.from_user.id]["name"])
-    elif d == "copy_user":
-        await q.message.reply_text(USERS[q.from_user.id]["username"])
-    elif d == "copy_pass":
-        await q.message.reply_text(USERS[q.from_user.id]["password"])
-    elif d.startswith("copy_otp_"):
-        await q.message.reply_text(d.replace("copy_otp_", ""))
+    await query.message.reply_text(text, parse_mode="Markdown")
+
+
+async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    data = query.data
+
+    if data == "create":
+        await create_email(query, user_id)
+
+    elif data == "inbox":
+        await inbox(query, user_id)
+
+    elif data.startswith("mail:"):
+        mail_id = data.split(":", 1)[1]
+        await read_mail(query, user_id, mail_id)
+
+
+# ---------- MAIN ----------
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(buttons))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CallbackQueryHandler(callbacks))
+
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
