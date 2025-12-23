@@ -86,6 +86,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton("📧 Create Mail", callback_data="create"),
             InlineKeyboardButton("📥 Inbox", callback_data="inbox"),
+        ],
+        [
             InlineKeyboardButton("❓ Help", callback_data="help"),
             InlineKeyboardButton("👨‍💻 Dev", callback_data="dev"),
         ]
@@ -150,6 +152,8 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton("📋 Copy Email", callback_data=f"copy:{email}"),
             InlineKeyboardButton("📋 Copy User", callback_data=f"copy:{username}"),
+        ],
+        [
             InlineKeyboardButton("📋 Copy Pass", callback_data=f"copy:{password}"),
             InlineKeyboardButton("📥 Inbox", callback_data="inbox"),
         ]
